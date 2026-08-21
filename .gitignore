@@ -1,0 +1,39 @@
+# This project uses a restrictive data policy to reduce the chance of
+# accidentally committing private, unreviewed, or generated datasets.
+
+# Private or unreviewed data
+data/private/
+data/raw/
+outputs/
+reports/
+
+# Workbooks are excluded by default
+*.xlsx
+*.xls
+
+# Solver outputs
+*.log
+*.lp
+*.mps
+*.sol
+gurobi.log
+
+# Secrets / environments
+.env
+.env.*
+.venv/
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+
+# IDE / notebook state
+.ipynb_checkpoints/
+.idea/
+.vscode/

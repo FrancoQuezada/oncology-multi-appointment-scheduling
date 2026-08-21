@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "multi-appointment-scheduling"
+version = "0.1.0"
+description = "Portfolio reconstruction of a multi-appointment oncology scheduling project: an applied scheduling workflow, ASAP and resource-aware heuristics, and a deterministic MILP model."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+optimization = ["gurobipy>=11"]
+
+[project.scripts]
+generate-demo-data = "appointment_scheduling.synthetic.generator:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
