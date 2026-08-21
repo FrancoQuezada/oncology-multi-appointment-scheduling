@@ -1,188 +1,220 @@
 # Multi-Appointment Scheduling for Oncology Care
 
-Research and applied optimization project for coordinating dependent oncology appointments under limited medical capacity.
+<p align="center">
+  <strong>Applied healthcare scheduling · Operations Research · Heuristics · MILP</strong>
+</p>
 
-**Status:** Completed research & portfolio archive.
+<p align="center">
+  <img alt="Operations Research" src="https://img.shields.io/badge/Operations%20Research-scheduling-2f81f7?style=flat-square">
+  <img alt="Healthcare" src="https://img.shields.io/badge/Healthcare-oncology-2f81f7?style=flat-square">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.x-3776AB?style=flat-square&logo=python&logoColor=white">
+  <img alt="MILP" src="https://img.shields.io/badge/Optimization-MILP-6f42c1?style=flat-square">
+  <img alt="Gurobi" src="https://img.shields.io/badge/Solver-Gurobi-d73a49?style=flat-square">
+</p>
 
-This repository is an archive by design. It documents finished applied and research work: it is not an actively maintained scheduling product, it is not connected to live FALP systems, and it does not distribute any real operational dataset. Nothing here requires an active Gurobi license to read or evaluate.
+> **Status — Completed research & portfolio archive.**  
+> This repository documents completed applied and research work. The historical project used real operational data from **Fundación Arturo López Pérez (FALP)**; this public reconstruction contains only independently generated synthetic data.
+
+[**Applied prototype**](docs/applied_prototype.md) · [**Research methods**](docs/research_policies.md) · [**MILP formulation**](docs/deterministic_milp.md) · [**Project context**](docs/project_context.md) · [**Synthetic data schema**](docs/data_dictionary.md)
+
+---
+
+## At a glance
+
+| Applied problem | Research methods | Public portfolio reconstruction |
+|---|---|---|
+| Coordinate multiple dependent oncology appointments under limited medical capacity | ASAP, resource-aware scheduling, deterministic MILP | Reimplements the core methodology with synthetic data and safer modular interfaces |
+| Real operational scheduling data, routes, agendas, blocked capacity and overbooking | Precedence constraints, time-lags, tardiness and finite-horizon scheduling | No patient records, clinician identities, real capacities or institutional datasets |
+| Sequential operator-supported appointment allocation | Gurobi used for the deterministic optimization model | Built as an inspectable archive of completed work, not as an active production service |
 
 ## Project overview
 
-This project addressed appointment scheduling for oncology patients in an applied collaboration with **Fundación Arturo López Pérez (FALP)**, a Chilean oncology-care foundation, using FALP's real operational scheduling data. FALP patients frequently require several coordinated appointments — imaging, laboratory work, specialist consultations, procedures — rather than a single independent visit, and those appointments compete for the same limited clinical resources (physicians, rooms, equipment, agenda slots).
+This project addressed a practical oncology scheduling problem in collaboration with **Fundación Arturo López Pérez (FALP)** in Chile. Unlike conventional appointment scheduling, oncology care often requires a patient to complete a **route of interdependent medical tasks**: consultations, examinations, laboratory work and procedures must be coordinated while respecting temporal relationships and competing for limited resources.
 
-The work had two complementary parts. An applied prototype processed FALP's own operational scheduling data — physician and resource availability, blocked capacity, patient demand, and derived patient routes — to support sequential, operator-checked appointment allocation. A parallel research effort formalized the same problem mathematically: an ASAP heuristic, a resource-aware heuristic, and a deterministic mixed-integer linear programming (MILP) model solved with Gurobi, developed as part of a research manuscript.
+The work combined two complementary components:
 
-The original applied prototype was built and evaluated directly against FALP's real operational data: appointment logs, physician schedules, blocked-capacity records, and patient routes. That data is confidential, and it is not included, reproduced, or statistically approximated anywhere in this repository.
+- **Applied scheduling prototype** — processing operational appointment demand, patient routes, resource availability, blocked capacity and overbooking to support sequential appointment allocation with an operator in the loop.
+- **Operations Research methodology** — formalizing the same scheduling problem through online heuristics and mathematical optimization, including ASAP scheduling, a resource-aware rule and a deterministic mixed-integer linear programming model.
 
-This public repository is a clean-room reconstruction, written after the fact, to document what was built and how. It reimplements the computational structure of the applied prototype and the research methods against fully synthetic, independently generated data, so the engineering and methodology can be inspected without exposing any confidential healthcare information.
+The historical implementation was developed and evaluated against FALP operational data. Those datasets are confidential and are **not** distributed here. This repository is a clean-room portfolio reconstruction created after the project was completed so that the engineering and methodology can be inspected without exposing healthcare information.
 
-## The problem
+## The scheduling problem
 
-A single oncology patient's care is rarely one appointment. It is a **route**: an ordered set of appointments — a first consultation, imaging, a lab test, a follow-up, a procedure — where some appointments cannot happen until others are completed.
+A patient does not request a single independent appointment. Instead, each patient follows a route represented by a directed acyclic graph (DAG), where tasks may have one or several predecessors and must respect minimum and recommended maximum time-lags.
 
+```text
+Patient arrival
+      ↓
+Patient route / DAG
+      ↓
+Eligible medical task
+      ↓
+Compatible resources + available capacity
+      ↓
+Feasible appointment opportunities
+      ↓
+Scheduling decision
+      ↓
+Capacity update and next route event
 ```
-patient route → temporal dependencies → compatible resources → limited capacity → appointment allocation
-```
 
-This makes the problem materially harder than conventional single-appointment scheduling:
+The resulting problem combines several sources of complexity:
 
-- **Temporal dependencies** — an appointment may only be booked a minimum number of days after its predecessor, and preferably before a soft maximum.
-- **Compatible resources** — an appointment may require a specific physician and agenda, or any resource within a compatible service/section/modality set.
-- **Limited and reducible capacity** — each resource-day has finite capacity, which can be further reduced by blocked time and partially extended through overbooking.
-- **Sequential, path-dependent decisions** — assigning one appointment changes the remaining capacity and the feasible window for the next appointment on the same route, and for other patients competing for the same resources.
-- **Unresolved outcomes** — not every appointment can be placed within the available horizon and capacity; the system must represent that outcome explicitly rather than fail silently.
+- **Precedence and time-lag constraints** between appointments.
+- **Resource compatibility**, including physicians, agendas, sections and other resource categories.
+- **Finite capacity**, affected by blocked slots and possible overbooking.
+- **Path-dependent decisions**: assigning one event changes both the patient's future feasible window and the capacity available to other patients.
+- **Incomplete routes** when an appointment cannot be placed within the available planning horizon.
 
 ## What was developed
 
 ### Applied scheduling prototype
 
-The historical applied prototype, developed and tested against FALP's operational data, covered:
+The historical applied work included:
 
-- extraction of per-patient appointment demand and derived route structure from historical appointment logs;
-- preprocessing of medical-resource supply: physician/agenda availability, blocked capacity, and overbooking allowances;
-- sequential, dependency-aware appointment allocation, one patient event at a time;
-- explicit handling of unresolved ("pending") appointments when no feasible slot existed;
-- an operator-facing, decision-support workflow — proposed dates were confirmed or adjusted by a human operator rather than assigned fully automatically.
+- extracting appointment demand and deriving patient-route information from operational records;
+- preprocessing physician/agenda supply, blocked capacity and overbooking allowances;
+- generating feasible appointment alternatives from route, timing and resource constraints;
+- sequentially assigning patient events while updating the remaining capacity;
+- representing unresolved appointments explicitly when no feasible option existed;
+- supporting an **operator-confirmed decision workflow**, rather than presenting the prototype as an autonomous production scheduler.
 
-This was a decision-support prototype implemented and tested against real operational data, not an autonomous production scheduler.
+The public modules [`preprocessing/`](src/appointment_scheduling/preprocessing), [`routes/`](src/appointment_scheduling/routes), [`scheduling/`](src/appointment_scheduling/scheduling) and [`schedulers/`](src/appointment_scheduling/schedulers) reconstruct these concepts using synthetic data and safer software interfaces.
 
 ### Research methodology
 
-The research component formalized the same problem as a scheduling methodology, developing:
+The research component studies the same scheduling problem under different decision rules and information assumptions.
 
-- **ASAP** — a greedy heuristic that assigns each event to the earliest feasible appointment;
-- **Resource-aware** — a greedy heuristic that instead favors the feasible appointment with the strongest remaining resource capacity inside the preferred timing window, trading immediacy for load balancing;
-- **Deterministic MILP** — a mixed-integer linear program that jointly decides every appointment over a finite planning horizon, subject to dependency/timing constraints and per-resource capacity constraints, minimizing total tardiness plus a penalty for appointments that cannot be resolved within the horizon;
-- Gurobi as the solver used to obtain optimal or best-known solutions to the MILP.
+| Method | Role | Core decision principle |
+|---|---|---|
+| **Sequential applied workflow** | Applied decision-support baseline | Evaluates feasible alternatives sequentially as route events become schedulable |
+| **ASAP** | Online research heuristic | Assign the earliest feasible appointment |
+| **Resource-aware** | Online research heuristic | Prefer the feasible appointment with the strongest current resource availability within the timing window |
+| **Deterministic MILP** | Offline mathematical benchmark | Jointly schedule all known tasks while minimizing delay and penalized unresolved outcomes |
 
-This methodology is associated with a research manuscript (see **Related research** below). No experimental results from that manuscript are reproduced in this repository.
+The deterministic model uses binary assignment decisions, precedence constraints, minimum time-lags, soft maximum time-lags, resource-capacity constraints and a finite planning horizon. Its objective can be summarized as:
 
-## Architecture and workflow
-
-```
-src/appointment_scheduling/
-├── preprocessing/
-├── routes/
-├── scheduling/
-├── schedulers/
-├── research/
-├── optimization/
-└── synthetic/
+```text
+minimize   total delay + M × penalized unresolved/post-horizon assignments
 ```
 
-- **`preprocessing/`** — validates and joins raw supply, blocked-capacity, and resource-mapping tables into a single deterministic availability table.
-- **`routes/`** — converts route records into immutable per-patient dependency graphs (DAGs) and shared pathway templates.
-- **`scheduling/`** — combines routes and availability into a copy-on-write feasibility state that answers "what appointments are currently possible."
-- **`schedulers/`** — implements the applied, forward-only sequential scheduling workflow behind a pluggable decision rule.
-- **`research/`** — implements the ASAP and resource-aware heuristics, shared comparison metrics, and an isolated multi-policy experiment runner.
-- **`optimization/`** — implements the solver-independent deterministic MILP formulation and an optional Gurobi adapter.
-- **`synthetic/`** — generates and validates the fully synthetic demo datasets that stand in for the original confidential operational data.
+Gurobi was the solver used for the deterministic research implementation. The public repository preserves the reconstructed formulation and solver adapter for methodological inspection; a working Gurobi license is not required to understand the code or the model. See [`docs/deterministic_milp.md`](docs/deterministic_milp.md) for the mathematical formulation.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    A[Operational scheduling problem] --> B[Supply preprocessing]
-    A --> C[Patient routes]
-    B --> D[Scheduling feasibility]
+    A[Historical FALP scheduling context] --> B[Supply & capacity preprocessing]
+    A --> C[Patient routes / DAGs]
+    B --> D[Shared feasibility model]
     C --> D
+
     D --> E[Applied sequential workflow]
     D --> F[ASAP]
-    D --> G[Resource-aware heuristic]
+    D --> G[Resource-aware]
     B --> H[Deterministic MILP]
     C --> H
+
+    subgraph Applied
+        E
+    end
+
+    subgraph Research
+        F
+        G
+        H
+    end
 ```
 
-At the event level, the same feasibility semantics apply across every method:
-
-```
-Patient route → Eligible event → Compatible appointment opportunities
-    → Timing + resource + capacity feasibility → Scheduling decision
-    → Capacity update → Next route event
-```
-
-An event becomes eligible once its predecessors (if any) are resolved. The feasibility engine narrows the search to appointment opportunities compatible with the event's resource requirements, timing window, and remaining capacity. A decision rule — the applied earliest-feasible rule, or a research policy such as ASAP or resource-aware — selects (or defers) an outcome; the shared state layer records it, consumes capacity, and re-evaluates downstream eligibility. The deterministic MILP applies the same feasibility semantics but decides every event jointly rather than one at a time.
-
-## Methods
-
-| Method | Type | Main idea |
-|---|---|---|
-| Sequential applied workflow | Applied decision-support baseline | Sequentially evaluates feasible appointment alternatives in deterministic patient/route order |
-| ASAP | Research heuristic | Assigns the earliest feasible appointment |
-| Resource-aware | Research heuristic | Favors the feasible appointment with the strongest current resource availability within the preferred timing window |
-| Deterministic MILP | Mathematical optimization | Jointly schedules all appointments over the finite horizon to minimize tardiness and post-horizon penalties |
-
-No method is presented as superior to another. The repository's synthetic experiments demonstrate that the software architecture supports fair, isolated comparison — they are demonstration and validation output, not empirical research findings.
-
-### Mathematical optimization
-
-The deterministic model minimizes
-
-```
-minimize  Σ tardiness  +  M × Σ penalized post-horizon events
+```text
+src/appointment_scheduling/
+├── preprocessing/   # supply, blocking, overbooking and resource mapping
+├── routes/          # patient-route DAGs and timing relationships
+├── scheduling/      # shared feasibility and capacity state
+├── schedulers/      # applied sequential scheduling workflow
+├── research/        # ASAP, resource-aware and experiment interfaces
+├── optimization/    # deterministic MILP + optional Gurobi adapter
+└── synthetic/       # public synthetic fixture generation
 ```
 
-over binary assignment variables that select a compatible appointment opportunity for each patient event (or an explicit post-horizon outcome when none is available), subject to:
+A single feasibility layer is shared across the reconstructed scheduling approaches so that route dependencies, timing semantics and capacity accounting remain consistent.
 
-- dependency/precedence constraints between events on the same route;
-- a hard minimum spacing after each predecessor;
-- a soft preferred maximum spacing, which contributes to tardiness rather than making a late appointment infeasible;
-- per-opportunity capacity constraints, with standard capacity consumed before overbooking capacity;
-- an explicit penalty for events that cannot be placed within the finite planning horizon.
+## Original project vs. public repository
 
-The deterministic optimization model was implemented using Gurobi as part of the original research work. The public repository preserves the formulation and solver integration for methodological documentation; an active Gurobi license is not required to inspect the implementation. The full formulation, notation, and historical-fidelity notes are documented in [`docs/deterministic_milp.md`](docs/deterministic_milp.md).
+The current package structure is **not presented as the exact historical software architecture**. It is a public-safe reconstruction of the concepts and methods implemented during the project.
 
-## Public reconstruction and confidentiality
+| Historical project component | Public representation |
+|---|---|
+| Route and periodicity extraction from appointment records | `routes/` |
+| Resource-supply, blocked-capacity and overbooking processing | `preprocessing/` |
+| Sequential operator-supported appointment allocation | `scheduling/` + `schedulers/` |
+| ASAP and resource-aware heuristics | `research/policies/` |
+| Deterministic Gurobi optimization model | `optimization/` |
+| Confidential institutional Excel datasets | Replaced entirely by `data/demo/*.csv` synthetic fixtures |
+| Legacy scripts and direct script-to-script execution | Refactored into modules, validation layers, documentation and regression tests |
 
-| Original project component | Public representation | Reconstruction status |
-|---|---|---|
-| Historical route/periodicity extraction from appointment logs | `routes/` | Clean-room reimplementation |
-| Medical-supply preprocessing, blocked-capacity netting, overbooking split | `preprocessing/` | Clean-room reimplementation |
-| Sequential, operator-confirmed appointment allocation with dependency checks and unresolved ("Pendiente") state | `schedulers/` + `scheduling/` | Clean-room reimplementation |
-| Manual route data-entry tooling | — | Not reconstructed (operational tooling, not a scheduling method) |
-| ASAP and resource-aware heuristics | `research/policies/` | Clean-room reimplementation of the research heuristics |
-| Deterministic MILP (Gurobi) | `optimization/` | Clean-room reimplementation of the formulation |
-| Confidential institutional appointment, supply, and route data | `data/demo/*.csv` | Replaced entirely by independently generated synthetic fixtures |
-| — | `tests/`, `docs/`, `examples/` | Public software-engineering additions; did not exist in the historical project |
+The public reconstruction intentionally improves software-engineering aspects such as deterministic validation, exact capacity indexing, modular interfaces and testing. Those improvements make the methodology inspectable; they should not be interpreted as features of the original operational prototype.
 
-The public implementation is a clean-room reconstruction. It preserves the computational structure and methodology of the original work while replacing confidential datasets and refactoring legacy implementation details — for example, the historical prototype updated capacity through broad row-matching updates and had scripts execute one another directly, while the public reconstruction uses exact-opportunity capacity keys and ordinary module imports. These are documented software-engineering corrections, not changes to the underlying scheduling methodology. See [`docs/project_context.md`](docs/project_context.md) and [`docs/applied_prototype.md`](docs/applied_prototype.md) for the full provenance discussion.
+## Data and confidentiality
 
-All data in this public repository are synthetic fixtures generated independently for software demonstration. They reproduce selected **structural** characteristics needed to demonstrate the scheduling logic — dependencies, timing windows, resource compatibility, capacity, and overbooking — and nothing else. They do **not** reproduce:
+The original project used real operational healthcare data supplied by FALP. None of those datasets are included in this repository.
 
-- patient records or any patient-identifying information;
-- the statistical distributions of the original operational data;
-- real operational volumes or capacity levels;
-- clinical protocols or treatment pathways;
-- institutional agenda identifiers, physician names, or facility capacities.
+The public fixtures reproduce only the **structural properties needed to demonstrate the scheduling logic**, such as dependencies, timing windows, compatible resources, capacity and overbooking. They do **not** reproduce or approximate:
 
-This repository is maintained as a portfolio artifact, a methodological archive of the scheduling approaches developed during the project, and evidence of completed applied and research contributions. It is **not** a production healthcare system, is **not** connected to FALP systems or any live scheduling infrastructure, is **not** a maintained or supported scheduling service, and is **not** distributed with any real operational or patient data.
+- patient records or identifiers;
+- clinician identities;
+- real appointment histories;
+- real treatment pathways or clinical protocols;
+- operational volumes or demand distributions;
+- real institutional capacities, agenda identifiers or blocked schedules.
 
-## Technical details and documentation
+The synthetic examples are therefore demonstration and validation fixtures, **not research results and not a statistical representation of FALP operations**.
 
-- **Language and libraries:** Python, pandas, NumPy.
-- **Optimization:** mixed-integer linear programming (MILP), with Gurobi as the historical and optional solver.
-- **Testing:** pytest.
-- **Historical data sources:** Excel-based operational exports, used only in the original applied prototype and never included here.
+## Related research
 
-Further documentation:
+This repository is associated with the preprint:
 
-- [`docs/project_context.md`](docs/project_context.md) — full provenance discussion.
-- [`docs/applied_prototype.md`](docs/applied_prototype.md) — the historical applied workflow, concept by concept.
-- [`docs/supply_preprocessing.md`](docs/supply_preprocessing.md), [`docs/route_model.md`](docs/route_model.md), [`docs/scheduling_state.md`](docs/scheduling_state.md), [`docs/sequential_scheduler.md`](docs/sequential_scheduler.md) — the feasibility engine and applied workflow.
-- [`docs/research_policies.md`](docs/research_policies.md), [`docs/deterministic_milp.md`](docs/deterministic_milp.md) — the research heuristics and the MILP formulation.
-- [`docs/data_dictionary.md`](docs/data_dictionary.md) — the synthetic dataset schemas.
+> **Solving delay minimization in online oncology multi-appointment scheduling problem with time-lags**  
+> Macarena Fredes, Sebastián Dávila-Gálvez, Safia Kedad-Sidhoum and Franco Quezada.
 
-To run the code locally:
+The broader manuscript studies oncology clinic routes as precedence-constrained DAGs with time-lags and compares scheduling approaches under different levels of information availability. In addition to the deterministic and online approaches represented in this repository, the manuscript also studies a two-stage stochastic programming model within a rolling-horizon framework. That stochastic component is **not reconstructed in this portfolio repository**.
+
+Publication information will be added when a public bibliographic reference is available.
+
+## Technical stack
+
+`Python` · `pandas` · `NumPy` · `pytest` · `Mixed-Integer Linear Programming` · `Gurobi` · `Scheduling` · `Graph / DAG modeling`
+
+The historical applied prototype consumed Excel-based operational exports. The public archive uses CSV synthetic fixtures only.
+
+## Explore the repository
+
+- [`docs/project_context.md`](docs/project_context.md) — project provenance and historical/public boundary.
+- [`docs/applied_prototype.md`](docs/applied_prototype.md) — applied scheduling workflow.
+- [`docs/research_policies.md`](docs/research_policies.md) — ASAP and resource-aware policies.
+- [`docs/deterministic_milp.md`](docs/deterministic_milp.md) — mathematical optimization formulation.
+- [`docs/data_dictionary.md`](docs/data_dictionary.md) — synthetic fixture schemas.
+- [`examples/`](examples) — public demonstration scripts.
+
+For local inspection:
 
 ```bash
 python -m pip install -e ".[dev]"
 pytest
 ```
 
-The public reconstruction includes regression and validation tests for the synthetic fixtures and reconstructed scheduling logic; this test suite belongs to the public reconstruction and was not part of the historical project. The Gurobi adapter is an optional extra (`pip install -e ".[dev,optimization]"`) and is not required to run the test suite or to read the optimization module.
+The Gurobi integration is optional (`pip install -e ".[dev,optimization]"`) and is not required to inspect the formulation or the rest of the repository.
 
-## Related research
+## Repository purpose
 
-A scientific manuscript associated with this work is being finalized. Publication information will be added here when publicly available.
+This repository is maintained as:
+
+- a **professional portfolio artifact**;
+- a methodological archive of completed applied scheduling work;
+- evidence of experience translating a real operational problem into data-processing logic, scheduling algorithms and mathematical optimization.
+
+It is **not** a production healthcare system, a live FALP integration or an actively maintained scheduling service.
 
 ## Author
 
-Franco Quezada Valenzuela
+**Franco Quezada Valenzuela**
